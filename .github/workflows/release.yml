@@ -1,0 +1,105 @@
+name: Source-only release
+
+# Releases are made only from an annotated tag such as:
+#   git tag -a v0.1.0 -m "0.1.0" && git push origin v0.1.0
+# The tag (without v) must equal VERSION. GitHub-generated source archives are
+# the only release downloads; this workflow never attaches app or binary files.
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate source release on macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Reject lightweight tags and verify tag commit
+        run: |
+          # checkout may leave a peeled commit ref; fetch the tag object before
+          # inspecting its type so lightweight tags fail closed.
+          git fetch --force --no-recurse-submodules origin \
+            "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" != "tag" ]; then
+            echo "::error::$GITHUB_REF_NAME is a lightweight tag; use git tag -a"
+            exit 1
+          fi
+          TAG_COMMIT="$(git rev-parse "$GITHUB_REF_NAME^{}")"
+          [ "$TAG_COMMIT" = "$(git rev-parse HEAD)" ] || {
+            echo "::error::tag does not point at the checked-out commit"
+            exit 1
+          }
+      - name: Require tag to match VERSION
+        run: |
+          VERSION="$(<VERSION)"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$TAG_VERSION" != "$VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match VERSION $VERSION"
+            exit 1
+          fi
+          if [[ "$(awk 'END {print NR}' VERSION)" -ne 1 ||
+                ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::VERSION must be exactly X.Y.Z on one line"
+            exit 1
+          fi
+      - name: Run XCTest
+        run: swift test
+      - name: Build app
+        run: ./build-app.sh
+      - name: Verify code signature
+        run: codesign --verify --deep --strict --verbose=2 otp-bar.app
+      - name: Verify architectures
+        run: lipo -info otp-bar.app/Contents/MacOS/otp-bar
+      - name: Verify Info.plist syntax
+        run: plutil -lint otp-bar.app/Contents/Info.plist
+      - name: Verify VERSION metadata
+        run: ./scripts/check-version.sh otp-bar.app/Contents/Info.plist
+
+  contract-and-leaks:
+    name: source tree and full-history secret validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Check publishable tree and release metadata
+        run: python3 scripts/release_contract.py
+      - name: Run release contract regression tests
+        run: python3 -m unittest -v Tests/test_release_contract.py
+      - name: gitleaks (full history)
+        run: |
+          curl -fsSLo gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz
+          echo "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e  gitleaks.tar.gz" \
+            | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --redact --no-banner .
+
+  publish:
+    name: create source-only GitHub Release
+    needs: [validate, contract-and-leaks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # gh is preinstalled on the GitHub-hosted runner. No asset paths are
+      # supplied: the release contains only GitHub's source archives.
+      - name: Create release from annotated tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo slvfmts/otp-bar \
+            --verify-tag \
+            --notes-from-tag \
+            --title "otp-bar ${GITHUB_REF_NAME#v}"

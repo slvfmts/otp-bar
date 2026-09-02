@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: source-only release contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check publishable tree and release metadata
+        run: python3 scripts/release_contract.py
+      - name: Run release contract regression tests
+        run: python3 -m unittest -v Tests/test_release_contract.py
+
+  leaks:
+    name: gitleaks (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: gitleaks (full history)
+        run: |
+          curl -fsSLo gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz
+          echo "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e  gitleaks.tar.gz" \
+            | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --redact --no-banner .
+
+  test-and-build:
+    name: macOS XCTest + universal app validation
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Run XCTest
+        run: swift test
+      - name: Build app
+        run: ./build-app.sh
+      - name: Verify code signature
+        run: codesign --verify --deep --strict --verbose=2 otp-bar.app
+      - name: Verify architectures
+        run: lipo -info otp-bar.app/Contents/MacOS/otp-bar
+      - name: Verify Info.plist syntax
+        run: plutil -lint otp-bar.app/Contents/Info.plist
+      - name: Verify VERSION metadata
+        run: ./scripts/check-version.sh otp-bar.app/Contents/Info.plist

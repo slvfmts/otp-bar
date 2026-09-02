@@ -1,0 +1,42 @@
+# macOS and editor state
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+*.swp
+
+# SwiftPM/Xcode state and generated products
+.build/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+*.app/
+otp-bar-bin
+otp-bar-arm64
+otp-bar-x86_64
+*.dSYM/
+*.zip
+*.tar.gz
+dist/
+
+# Local release verification downloads
+gitleaks
+gitleaks.tar.gz
+
+# Secret-bearing local files
+*.qr
+*.png
+*.jpg
+*.jpeg
+*.heic
+*.webp
+accounts.json
+*accounts*.json
+*export*.json
+secrets.json
+
+# Local research and handoff material
+.firecrawl/
+notes/
+OPEN_SOURCE_RELEASE_SPEC.md
+LUNA_HANDOFF.md
