@@ -92,6 +92,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      # --notes-from-tag reads the annotated tag through the local repository;
+      # gh does not support combining that option with an explicit --repo.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
       # gh is preinstalled on the GitHub-hosted runner. No asset paths are
       # supplied: the release contains only GitHub's source archives.
       - name: Create release from annotated tag
@@ -99,7 +104,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            --repo slvfmts/otp-bar \
             --verify-tag \
             --notes-from-tag \
             --title "otp-bar ${GITHUB_REF_NAME#v}"

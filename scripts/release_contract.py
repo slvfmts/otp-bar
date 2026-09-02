@@ -145,8 +145,10 @@ def assert_workflows() -> None:
         raise AssertionError("source-only workflows must not upload app artifacts")
     if "gh release create" not in release or "--verify-tag" not in release:
         raise AssertionError("release must use gh with --verify-tag")
-    if "--notes-from-tag" not in release or "--repo slvfmts/otp-bar" not in release:
-        raise AssertionError("release must use annotated-tag notes and the target repository")
+    if "--notes-from-tag" not in release:
+        raise AssertionError("release must use annotated-tag notes")
+    if re.search(r"gh release create[\s\S]*?--repo(?:\s|=)", release):
+        raise AssertionError("--notes-from-tag must use the checked-out local repository")
     if re.search(r"gh release create[^\n]*(?:\.app|\.zip|\.dylib|\.bin|\.tar)", release):
         raise AssertionError("release command must not attach binary assets")
     if "permissions:\n      contents: write" not in release:

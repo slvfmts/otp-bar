@@ -101,6 +101,7 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotRegex(release, r"gh release create[^\n]*(?:\\.app|\\.zip|\\.dylib|\\.bin)")
         self.assertIn("--verify-tag", release)
         self.assertIn("--notes-from-tag", release)
+        self.assertNotRegex(release, r"gh release create[\s\S]*?--repo(?:\s|=)")
 
     def test_tree_guard_script_is_executable_and_passes(self):
         script = ROOT / "scripts/release_contract.py"
